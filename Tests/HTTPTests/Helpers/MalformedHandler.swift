@@ -9,7 +9,6 @@
 import Foundation
 import HTTP
 
-/// Simple `HTTPRequestHandler` that returns 200: OK without a body
 class MalformedHandler: HTTPRequestHandling {
     var status: HTTPResponseStatus = .noContent
 

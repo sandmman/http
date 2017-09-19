@@ -61,7 +61,12 @@ class VersionTests: XCTestCase {
         XCTAssertFalse(version20 <= version10)
         XCTAssertFalse(version20 <= version11)
     }
-
+    
+    func testMisc() {
+        XCTAssertFalse(version10 ~= version11)
+        XCTAssertFalse(version10.hashValue == version11.hashValue)
+        XCTAssertFalse(version10.description == version11.description)
+    }
     static var allTests = [
         ("testEquals", testEquals),
         ("testGreater", testGreater),

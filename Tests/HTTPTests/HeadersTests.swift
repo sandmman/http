@@ -77,6 +77,13 @@ class HeadersTests: XCTestCase {
         XCTAssertEqual("Test Value 4a", testHeaderValueArray4.first ?? "Not Found")
         let testHeaderValueArray4Remainder = testHeaderValueArray4.dropFirst()
         XCTAssertEqual("Test Value 4b", testHeaderValueArray4Remainder.first ?? "Not Found")
+        
+        headers["TEST-HEADER"] = "Test Value 3"
+        XCTAssertEqual(headers["TEST-HEADER"], "Test Value 3")
+        XCTAssertEqual(headers["NON-EXISTENT"], nil)
+        XCTAssertEqual(headers[valuesFor: "NON-EXISTENT"], [])
+        headers.replace(HTTPHeaders.Literal(dictionaryLiteral: ("TEST-HEADER", "Test Value 4")))
+        XCTAssertEqual(headers["TEST-HEADER"], "Test Value 4")
     }
 
     static var allTests = [

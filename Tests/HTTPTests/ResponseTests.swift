@@ -28,10 +28,19 @@ class ResponseTests: XCTestCase {
         let notFound: HTTPResponseStatus = 404
         XCTAssertEqual(notFound, HTTPResponseStatus.notFound)
     }
+    
+    func testClasses() {
+        XCTAssertEqual(HTTPResponseStatus.switchingProtocols.class, .informational)
+        XCTAssertEqual(HTTPResponseStatus.alreadyReported.class, .successful)
+        XCTAssertEqual(HTTPResponseStatus.temporaryRedirect.class, .redirection)
+        XCTAssertEqual(HTTPResponseStatus.paymentRequired.class, .clientError)
+        XCTAssertEqual(HTTPResponseStatus.loopDetected.class, .serverError)
+    }
 
     static var allTests = [
         ("testOkay", testOkay),
         ("testContinue", testContinue),
         ("testNotFound", testNotFound),
+        ("testClasses", testClasses),
     ]
 }

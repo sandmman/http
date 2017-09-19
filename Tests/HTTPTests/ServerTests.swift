@@ -439,7 +439,7 @@ class ServerTests: XCTestCase {
     func testAdjustHeaders() {
         let receivedExpectation1 = self.expectation(description: "Received Proper Headers")
         let receivedExpectation2 = self.expectation(description: "Received Proper Headers")
-        
+
         let server = HTTPServer()
         let handler = MalformedHandler()
         
@@ -464,7 +464,7 @@ class ServerTests: XCTestCase {
                 receivedExpectation1.fulfill()
                 
                 handler.status = .notModified
-                
+
                 let dataTask2 = session.dataTask(with: url) { (responseBody, rawResponse, error) in
                     XCTAssertNil(error, "\(error!.localizedDescription)")
                     
