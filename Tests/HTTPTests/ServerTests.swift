@@ -7,10 +7,26 @@
 //
 
 import XCTest
+import Dispatch
 
 @testable import HTTP
 
 class ServerTests: XCTestCase {
+    
+    func testHTTPMethods() {
+        let get = HTTPMethod(stringLiteral: "Get")
+        let post = HTTPMethod("Post")
+        let patch = HTTPMethod(unicodeScalarLiteral: "Patch")
+        let delete = HTTPMethod(extendedGraphemeClusterLiteral: "Delete")
+        
+        XCTAssertEqual(get.hashValue, HTTPMethod.get.hashValue)
+        XCTAssertNotEqual(get.hashValue, HTTPMethod.post.hashValue)
+        XCTAssertEqual(post, .post)
+        XCTAssertEqual(post.description, HTTPMethod.post.description)
+        XCTAssertTrue(patch == .patch)
+        XCTAssertTrue(delete ~= .delete)
+    }
+    
     func testResponseOK() {
         let request = HTTPRequest(method: .get, target: "/echo", httpVersion: HTTPVersion(major: 1, minor: 1), headers: ["X-foo": "bar"])
         let resolver = TestResponseResolver(request: request, requestBody: Data())
@@ -270,7 +286,7 @@ class ServerTests: XCTestCase {
                     XCTFail("\(error)")
                 }
             }
-            //server.stop()
+            server.stop()
         } catch {
             XCTFail("Error listening on port \(0): \(error). Use server.failed(callback:) to handle")
         }
@@ -300,6 +316,7 @@ class ServerTests: XCTestCase {
                 XCTAssertNil(error, "\(error!.localizedDescription)")
                 XCTAssertNotNil(response)
                 let headers = response?.allHeaderFields ?? ["": ""]
+                print(headers)
                 let connectionHeader: String = headers["Connection"] as? String ?? ""
                 let keepAliveHeader = headers["Keep-Alive"]
                 XCTAssertEqual(connectionHeader, "Keep-Alive", "No Keep-Alive Connection")
@@ -421,8 +438,193 @@ class ServerTests: XCTestCase {
             XCTFail("Error listening on port \(0): \(error). Use server.failed(callback:) to handle")
         }
     }
-
+    
+    // Simple tests to verify correctness of adjustHeaders
+    func testAdjustHeaders() {
+        let receivedExpectation1 = self.expectation(description: "Received Proper Headers")
+        let receivedExpectation2 = self.expectation(description: "Received Proper Headers")
+        
+        let server = HTTPServer()
+        let handler = MalformedHandler()
+        
+        do {
+            try server.start(port: 0, handler: handler.handle)
+            
+            let session = URLSession(configuration: URLSessionConfiguration.default)
+            let url = URL(string: "http://localhost:\(server.port)")!
+            
+            let dataTask1 = session.dataTask(with: url) { (responseBody, rawResponse, error) in
+                XCTAssertNil(error, "\(error!.localizedDescription)")
+                
+                let response = rawResponse as? HTTPURLResponse
+                let headers = response?.allHeaderFields ?? ["": ""]
+                
+                // Ensure Correctness of Headers
+                XCTAssertNotNil(headers["Transfer-Encoding"])
+                XCTAssertNil(headers["Content-Length"])
+                XCTAssertNotNil(response)
+                XCTAssertNotNil(responseBody)
+                XCTAssertEqual(Int(HTTPResponseStatus.noContent.code), response?.statusCode ?? 0)
+                receivedExpectation1.fulfill()
+                
+                handler.status = .notModified
+                
+                let dataTask2 = session.dataTask(with: url) { (responseBody, rawResponse, error) in
+                    XCTAssertNil(error, "\(error!.localizedDescription)")
+                    
+                    let response = rawResponse as? HTTPURLResponse
+                    let headers = response?.allHeaderFields ?? ["": ""]
+                    
+                    XCTAssertNotNil(headers["Transfer-Encoding"])
+                    XCTAssertNil(headers["Content-Length"])
+                    XCTAssertNotNil(response)
+                    XCTAssertNotNil(responseBody)
+                    XCTAssertEqual(Int(HTTPResponseStatus.notModified.code), response?.statusCode ?? 0)
+                    receivedExpectation2.fulfill()
+                }
+                dataTask2.resume()
+            }
+            dataTask1.resume()
+            self.waitForExpectations(timeout: 15) { (error) in
+                if let error = error {
+                    XCTFail("\(error)")
+                }
+            }
+            server.stop()
+        } catch {
+            XCTFail("Error listening on port \(0): \(error). Use server.failed(callback:) to handle")
+        }
+    }
+    
+    func testExplicitCloseConnections() {
+        let expectation = self.expectation(description: "0 Open Connection")
+        let server = HTTPServer()
+        do {
+            try server.start(port: 0, handler: OkHandler().handle)
+            
+            let session = URLSession(configuration: URLSessionConfiguration.default)
+            let url1 = URL(string: "http://localhost:\(server.port)/echo")!
+            var request = URLRequest(url: url1)
+            request.httpMethod = "POST"
+            request.setValue("close", forHTTPHeaderField: "Connection")
+            
+            let dataTask1 = session.dataTask(with: request) { (responseBody, rawResponse, error) in
+                XCTAssertNil(error, "\(error!.localizedDescription)")
+                DispatchQueue.main.asyncAfter(deadline: .now() + 25) {
+                    XCTAssertEqual(server.connectionCount, 0)
+                    expectation.fulfill()
+                }
+                
+            }
+            dataTask1.resume()
+            
+            self.waitForExpectations(timeout: 30) { (error) in
+                if let error = error {
+                    XCTFail("\(error)")
+                }
+            }
+            server.stop()
+        } catch {
+            XCTFail("Error listening on port \(0): \(error). Use server.failed(callback:) to handle")
+        }
+    }
+    
+    func testCloseConnections() {
+        let receivedExpectation1 = self.expectation(description: "2 Open Connections")
+        let receivedExpectation2 = self.expectation(description: "1 Open Connection")
+        let receivedExpectation3 = self.expectation(description: "0 Open Connection")
+        
+        let server = HTTPServer()
+        
+        do {
+            try server.start(port: 0, handler: EchoHandler().handle)
+            
+            let session = URLSession(configuration: URLSessionConfiguration.default)
+            let url1 = URL(string: "http://localhost:\(server.port)/echo")!
+            var request = URLRequest(url: url1)
+            request.httpMethod = "POST"
+            
+            let dataTask1 = session.dataTask(with: request) { (responseBody, rawResponse, error) in
+                XCTAssertNil(error, "\(error!.localizedDescription)")
+                XCTAssertEqual(server.connectionCount, 1)
+                
+                let url2 = URL(string: "http://127.0.0.1:\(server.port)/echo")!
+                var request2 = URLRequest(url: url2)
+                request2.httpMethod = "POST"
+                sleep(5)
+                
+                let dataTask2 = session.dataTask(with: request2) { (responseBody, rawResponse, error) in
+                    XCTAssertNil(error, "\(error!.localizedDescription)")
+                    XCTAssertEqual(server.connectionCount, 2)
+                    receivedExpectation1.fulfill()
+                    sleep(5)
+                    XCTAssertEqual(server.connectionCount, 1)
+                    receivedExpectation2.fulfill()
+                    sleep(15)
+                    XCTAssertEqual(server.connectionCount, 0)
+                    receivedExpectation3.fulfill()
+                }
+                dataTask2.resume()
+            }
+            dataTask1.resume()
+            
+            self.waitForExpectations(timeout: 30) { (error) in
+                if let error = error {
+                    XCTFail("\(error)")
+                }
+            }
+            server.stop()
+        } catch {
+            XCTFail("Error listening on port \(0): \(error). Use server.failed(callback:) to handle")
+        }
+    }
+    
+    func testLargeChunking() {
+        let expectation = self.expectation(description: "Received web response \(#function)")
+        
+        // Get a file we know exists
+        let executableURL = URL(fileURLWithPath: CommandLine.arguments[0])
+        let testExecutableData: Data
+        
+        do {
+            testExecutableData = try Data(contentsOf: executableURL)
+        } catch {
+            XCTFail("Could not create Data from contents of \(executableURL)")
+            return
+        }
+        
+        var testDataLong = testExecutableData + testExecutableData + testExecutableData + testExecutableData
+        let length = testDataLong.count
+        let keep = 259136
+        let remove = length - keep
+        if remove > 0 {
+            testDataLong.removeLast(remove)
+        }
+        
+        let testData = Data(testDataLong)
+        
+        let server = HTTPServer()
+        let delegate = NetworkManager()
+        
+        do {
+            try server.start(port: 0, handler: EchoHandler().handle)
+            delegate.send(url: "http://localhost:\(server.port)/echo", with: testData) { data in
+                XCTAssertEqual(testData, data)
+                expectation.fulfill()
+            }
+            self.waitForExpectations(timeout: 10) { (error) in
+                if let error = error {
+                    XCTFail("\(error)")
+                }
+            }
+            server.stop()
+        } catch {
+            XCTFail("Error listening on port \(0): \(error). Use server.failed(callback:) to handle")
+        }
+    }
+    
     static var allTests = [
+        ("testHTTPMethods", testHTTPMethods),
         ("testEcho", testEcho),
         ("testHello", testHello),
         ("testSimpleHello", testSimpleHello),
@@ -433,5 +635,9 @@ class ServerTests: XCTestCase {
         ("testRequestEchoEndToEnd", testRequestEchoEndToEnd),
         ("testRequestKeepAliveEchoEndToEnd", testRequestKeepAliveEchoEndToEnd),
         ("testRequestLargeEchoEndToEnd", testRequestLargeEchoEndToEnd),
+        ("testAdjustHeaders", testAdjustHeaders),
+        ("testExplicitCloseConnections", testExplicitCloseConnections),
+        ("testCloseConnections", testCloseConnections),
+        ("testLargeChunking", testLargeChunking),
     ]
 }
