@@ -7,6 +7,7 @@
 //
 
 import XCTest
+import Dispatch
 
 @testable import HTTP
 
@@ -422,6 +423,39 @@ class ServerTests: XCTestCase {
         }
     }
 
+    func testCloseConnections() {
+        let expectation = self.expectation(description: "0 Open Connection")
+        let server = HTTPServer()
+        do {
+            try server.start(port: 0, handler: OkHandler().handle)
+            
+            let session = URLSession(configuration: URLSessionConfiguration.default)
+            let url1 = URL(string: "http://localhost:\(server.port)/echo")!
+            var request = URLRequest(url: url1)
+            request.httpMethod = "POST"
+            request.setValue("close", forHTTPHeaderField: "Connection")
+            
+            let dataTask1 = session.dataTask(with: request) { (responseBody, rawResponse, error) in
+                XCTAssertNil(error, "\(error!.localizedDescription)")
+                DispatchQueue.main.asyncAfter(deadline: .now() + 25) {
+                    XCTAssertEqual(server.connectionCount, 0)
+                    expectation.fulfill()
+                }
+                
+            }
+            dataTask1.resume()
+            
+            self.waitForExpectations(timeout: 30) { (error) in
+                if let error = error {
+                    XCTFail("\(error)")
+                }
+            }
+            server.stop()
+        } catch {
+            XCTFail("Error listening on port \(0): \(error). Use server.failed(callback:) to handle")
+        }
+    }
+
     static var allTests = [
         ("testEcho", testEcho),
         ("testHello", testHello),
@@ -433,5 +467,6 @@ class ServerTests: XCTestCase {
         ("testRequestEchoEndToEnd", testRequestEchoEndToEnd),
         ("testRequestKeepAliveEchoEndToEnd", testRequestKeepAliveEchoEndToEnd),
         ("testRequestLargeEchoEndToEnd", testRequestLargeEchoEndToEnd),
+        ("testCloseConnections", testCloseConnections),
     ]
 }

@@ -452,7 +452,7 @@ public class StreamingParser: HTTPResponseWriter {
                 self.keepAliveUntil = Date(timeIntervalSinceNow: StreamingParser.keepAliveTimeout).timeIntervalSinceReferenceDate
                 self.parserConnector?.responseComplete()
             } else {
-                self.parserConnector?.closeWriter()
+                self.parserConnector?.responseComplete()
             }
         }
 
