@@ -11,6 +11,7 @@ import Dispatch
 
 @testable import HTTP
 
+@available(OSX 10.12, *)
 class ServerTests: XCTestCase {
     
     func testHTTPMethods() {
@@ -546,20 +547,37 @@ class ServerTests: XCTestCase {
                 let url2 = URL(string: "http://127.0.0.1:\(server.port)/echo")!
                 var request2 = URLRequest(url: url2)
                 request2.httpMethod = "POST"
-                sleep(5)
                 
-                let dataTask2 = session.dataTask(with: request2) { (responseBody, rawResponse, error) in
-                    XCTAssertNil(error, "\(error!.localizedDescription)")
-                    XCTAssertEqual(server.connectionCount, 2)
-                    receivedExpectation1.fulfill()
-                    sleep(5)
-                    XCTAssertEqual(server.connectionCount, 1)
-                    receivedExpectation2.fulfill()
-                    sleep(15)
-                    XCTAssertEqual(server.connectionCount, 0)
-                    receivedExpectation3.fulfill()
+                func createTimer(time: Double, callback: @escaping () -> ()) -> Timer {
+                    return Timer(timeInterval: time, repeats: false) { _ in
+                        callback()
+                    }
                 }
-                dataTask2.resume()
+                
+                let timer = createTimer(time: 5) {
+                    let dataTask2 = session.dataTask(with: request2) { (responseBody, rawResponse, error) in
+                        XCTAssertNil(error, "\(error!.localizedDescription)")
+                        XCTAssertEqual(server.connectionCount, 2)
+                        receivedExpectation1.fulfill()
+                        let timer2 = createTimer(time: 5) {
+                            XCTAssertEqual(server.connectionCount, 1)
+                            receivedExpectation2.fulfill()
+                            
+                            let timer3 = createTimer(time: 15) {
+                                XCTAssertEqual(server.connectionCount, 0)
+                                receivedExpectation3.fulfill()
+                            }
+                            RunLoop.current.add(timer3, forMode: .defaultRunLoopMode)
+                            RunLoop.current.run()
+                        }
+                        RunLoop.current.add(timer2, forMode: .defaultRunLoopMode)
+                        RunLoop.current.run()
+                    }
+                    dataTask2.resume()
+                }
+                RunLoop.current.add(timer, forMode: .defaultRunLoopMode)
+                RunLoop.current.run()
+                
             }
             dataTask1.resume()
             
