@@ -29,7 +29,7 @@ class NetworkManager : NSObject, URLSessionDelegate, URLSessionDataDelegate {
         var request = URLRequest(url: URL(string: url)!)
         request.httpMethod = "POST"
         request.httpBody = data
-        let task = self.session.dataTask(with: request)
+        let task = self.session.uploadTask(with: request, from: data)
         task.resume()
     }
 
