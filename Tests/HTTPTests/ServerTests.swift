@@ -547,37 +547,22 @@ class ServerTests: XCTestCase {
                 let url2 = URL(string: "http://127.0.0.1:\(server.port)/echo")!
                 var request2 = URLRequest(url: url2)
                 request2.httpMethod = "POST"
-                
-                func createTimer(time: Double, callback: @escaping () -> ()) -> Timer {
-                    return Timer(timeInterval: time, repeats: false) { _ in
-                        callback()
-                    }
-                }
-                
-                let timer = createTimer(time: 5) {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
                     let dataTask2 = session.dataTask(with: request2) { (responseBody, rawResponse, error) in
                         XCTAssertNil(error, "\(error!.localizedDescription)")
                         XCTAssertEqual(server.connectionCount, 2)
                         receivedExpectation1.fulfill()
-                        let timer2 = createTimer(time: 5) {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
                             XCTAssertEqual(server.connectionCount, 1)
                             receivedExpectation2.fulfill()
-                            
-                            let timer3 = createTimer(time: 15) {
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 15) {
                                 XCTAssertEqual(server.connectionCount, 0)
                                 receivedExpectation3.fulfill()
                             }
-                            RunLoop.current.add(timer3, forMode: .defaultRunLoopMode)
-                            RunLoop.current.run()
                         }
-                        RunLoop.current.add(timer2, forMode: .defaultRunLoopMode)
-                        RunLoop.current.run()
                     }
                     dataTask2.resume()
                 }
-                RunLoop.current.add(timer, forMode: .defaultRunLoopMode)
-                RunLoop.current.run()
-                
             }
             dataTask1.resume()
             
